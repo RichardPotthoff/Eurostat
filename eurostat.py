@@ -9,7 +9,7 @@ age_ranges=[ 'Y_LT10', 'Y10-19', 'Y20-29', 'Y30-39', 'Y40-49', 'Y50-59', 'Y60-69
 sex='T'
 
 base_year=2020
-years=range(base_year-8,base_year+1)
+years=range(base_year-8,base_year+2)
 
 DEBUG=True
 
@@ -136,7 +136,7 @@ plt.ylim(0,0.015)
 plt.ylabel('Total Age-Adjusted Mortality [1/year]')
 plt.xlabel('Year')
 plt.title(f'Mortality {geo}')
-plt.plot(years,list(db2['age-adj 2020'].values()),'b')
+plt.plot(years[:-1],list(db2['age-adj 2020'].values())[:-1],'b')
 plt.show()
 
 
@@ -153,12 +153,12 @@ for year,weeks in db_['TOTAL'].items() :
     age_adj=db2['age-adj 2020'][year]/db2['TOTAL'][year]
 #    age_adj=1.0
     plt.plot([age_adj*y/db1["TOTAL"][year-1]*365.25/7 for y in weeks[1:last_week]], 
-     **([dict(c='k',lw=1,zorder=0), dict(c='b',lw=2,zorder=1,),][year==base_year]),
+     **(dict(c='k',lw=1,zorder=0) if year<base_year else dict(c='b',lw=2,zorder=1,) if year==base_year else dict(c='r',lw=2,zorder=1,) ),
         label=f'{year}')
 plt.ylabel('Total Age-Adjusted Mortality [1/year]')
 plt.xlabel('Week of Year')
 plt.title(f'Seasonal Mortality {geo}')
-plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+plt.legend(bbox_to_anchor=(1.01, 1), loc='upper left', borderaxespad=0.)
 plt.ylim(bottom=0)
 plt.show()
 

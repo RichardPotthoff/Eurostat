@@ -16,6 +16,8 @@ years=range(base_year-8,current_year+1)
 deathsfile='demo_r_mwk_10.tsv.gz'#Deaths by week, sex and 10-year age groups
 popfile='demo_pjan.tsv.gz'#Population on 1 January by age and sex
 eurostat_base_url='https://ec.europa.eu/eurostat/estat-navtree-portlet-prod/BulkDownloadListing?file=data/'
+#source: 
+#https://ec.europa.eu/eurostat/web/population-demography/demography-population-stock-balance/database
 
 DEBUG=True
 
@@ -32,6 +34,10 @@ import certifi
 import urllib3
 import io
 from matplotlib import pyplot as plt
+try:
+  from countrycodes import cc2name,name2cc
+except:
+  cc2name=name2cc=lambda cc:cc
 plt.rcParams['axes.formatter.useoffset'] = False
 
 http=urllib3.PoolManager( cert_reqs='CERT_REQUIRED', ca_certs=certifi.where()) 
@@ -53,9 +59,7 @@ def extract_eurostat_data(file='demo_r_mwk_10.tsv.gz', filter={'geo':'DE','sex':
     rowparamkeyindex={key:i for i,key in enumerate(rowparamkeys)}
     filterset=set((rowparamkeyindex[key],value) for key,value in filter.items())
     for rec in Table:
-#      fields_={key:value for key,value in zip(rowparamkeys,rec[Table.fieldnames[0]].split(','))}
       rowparams=rec[Table.fieldnames[0]].split(',')
-#      if sum([fields_[key]!=value for key,value in filter.items()])==0:
       if filterset.issubset(set(enumerate(rowparams))):#filter for rows that match the filter
         fields_=dict(zip(rowparamkeys,rowparams))
         for key,value in rec.items(): #iterate through all columns of the table
@@ -64,7 +68,6 @@ def extract_eurostat_data(file='demo_r_mwk_10.tsv.gz', filter={'geo':'DE','sex':
             if val.isnumeric():
               fields_['value']=int(val)
             else:
-#              fields_['value']=0
               continue #skip if there is no value in the row/column
             if 'W' in key:
               year,week=key.split('W') #split the column heading in year and week of year
@@ -73,8 +76,6 @@ def extract_eurostat_data(file='demo_r_mwk_10.tsv.gz', filter={'geo':'DE','sex':
               week=0
             fields_['year']=int(year)
             fields_['week']=int(week)
-#            val=value.split()[0]
-#            fields_['value']=int(val) if val.isnumeric() else 0
             yield(fields_[key] for key in fields)
 
 def extract_eurostat_Fieldvalues(file='demo_r_mw.tsv.gz',):
@@ -109,8 +110,8 @@ deaths_a={age:{year:sum(weeks) for year,weeks in years.items()} for age,years in
 
 # In[4]:
 
-
-pop={}#sum up the population into age-groups that match the age groups in the deaths database
+#sum up the population into age-groups that match the age groups in the deaths database:
+pop={}
 for age,year,val in extract_eurostat_data(popfile,filter={'geo':geo,'sex':sex}, fields=('age','year','value')):
   if age=='Y_LT1':
     age='Y0'
@@ -133,11 +134,8 @@ for age,year,val in extract_eurostat_data(popfile,filter={'geo':geo,'sex':sex}, 
 
 
 # In[5]:
-max_year=max(deaths_a['TOTAL'])
-min_year=min(deaths_a['TOTAL'])
-years=range(max(min_year,years[0]),min(max_year,years[-1])+1)
-print(f'max_year:{max_year}, min_year:{min_year}')
 
+#calculate the mortalities for each age group:
 mort={}
 for age in age_ranges:
   mort[age]={}
@@ -148,17 +146,22 @@ for age in age_ranges:
     except KeyError:
       continue
 
-mort['age-adj 2020']={}
+#calculate the age-adjusted mortality for the base_year
+mort[f'age-adj {base_year}']={}
 for year in years:
   try:
     s=0
     for age in age_ranges[:-1]:
       s+=deaths_a[age][year]/pop[age][year-1]*pop[age][base_year-1]
     x=s/pop["TOTAL"][base_year-1]
-    mort['age-adj 2020'][year]=x
+    mort[f'age-adj {base_year}'][year]=x
   except KeyError:
     continue
-mortyears=list(mort['age-adj 2020'].keys())
+    
+mortyears=list(mort[f'age-adj {base_year}'].keys())
+print()
+print(f'Mortalities [%/year], {cc2name(geo)}:')
+print()
 print(f'{"age-range|years:":16s}{"".join([f" {y:6d}" for y in mortyears])}')      
 for age,row in mort.items():
   print(f'{age:16s}',end=' ')   
@@ -168,16 +171,12 @@ for age,row in mort.items():
 # In[6]:
 
 
-#get_ipython().run_line_magic('matplotlib', 'inline')
 plt.close()
 plt.ylim(0,0.02)
 plt.ylabel('Total Age-Adjusted Mortality [1/year]')
 plt.xlabel('Year')
-plt.title(f'Mortality {geo}')
-#if mortyears[-1]==current_year:
-plt.plot(list(mort['age-adj 2020'].keys())[:],list(mort['age-adj 2020'].values())[:],'b')
-#else:
-#  plt.plot(mortyears[:],list(mort['age-adj 2020'].values())[:],'b')
+plt.title(f'Mortality, {cc2name(geo)}')
+plt.plot(list(mort[f'age-adj {base_year}'].keys())[:],list(mort[f'age-adj {base_year}'].values())[:],'b')
 plt.show()
 
 
@@ -191,8 +190,7 @@ for year,weeks in deaths_w['TOTAL'].items() :
     last_week=len(weeks)
     while weeks[last_week-1]==0 and last_week>0:
       last_week-=1
-    age_adj=mort['age-adj 2020'][year]/mort['TOTAL'][year]
-#    age_adj=1.0
+    age_adj=mort[f'age-adj {base_year}'][year]/mort['TOTAL'][year]
     plt.plot([age_adj*y/pop["TOTAL"][year-1]*365.25/7 for y in weeks[1:last_week]], 
      **(  
           dict(c='r',lw=2,zorder=1,) if year==2021 
@@ -202,7 +200,7 @@ for year,weeks in deaths_w['TOTAL'].items() :
         label=f'{year}')
 plt.ylabel('Total Age-Adjusted Mortality [1/year]')
 plt.xlabel('Week of Year')
-plt.title(f'Seasonal Mortality {geo}')
+plt.title(f'Seasonal Mortality, {cc2name(geo)}')
 plt.legend(bbox_to_anchor=(1.01, 1), loc='upper left', borderaxespad=0.0)
 plt.ylim(bottom=0)
 plt.xlim(right=52)
@@ -212,11 +210,12 @@ plt.show()
 
 # In[8]:
 
-#check if calculated weekly and annual mortalities add up:
-year=mortyears[-2]
-age_adj=mort['age-adj 2020'][year]/mort['TOTAL'][year]
-print(mort['age-adj 2020'][year])
-print(sum([age_adj*deaths/pop["TOTAL"][year-1]*365.25/7 for deaths in deaths_w['TOTAL'][year][1:]])/(365.25/7))
+if DEBUG:
+  #check if calculated weekly and annual mortalities add up:
+  year=mortyears[-2]
+  age_adj=mort[f'age-adj {base_year}'][year]/mort['TOTAL'][year]
+  print(mort[f'age-adj {base_year}'][year])
+  print(sum([age_adj*deaths/pop["TOTAL"][year-1]*365.25/7 for deaths in deaths_w['TOTAL'][year][1:]])/(365.25/7))
 
 
 # In[ ]:
